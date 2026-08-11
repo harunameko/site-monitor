@@ -111,7 +111,7 @@ def notify(title: str, message: str, url: str) -> None:
             headers={
                 "Title": title.encode("utf-8"),
                 "Click": url,
-                "Priority": "high",
+                "Priority": "urgent",
                 "Tags": "loudspeaker",
             },
             timeout=15,

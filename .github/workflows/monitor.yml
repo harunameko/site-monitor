@@ -25,15 +25,20 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4
 
-      - name: Run monitor
+      - name: Run monitor (1分おきに5回)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-        run: python monitor.py
+        run: |
+          for i in 1 2 3 4 5; do
+            python monitor.py || true
+            if [ "$i" -lt 5 ]; then sleep 55; fi
+          done
 
       - name: Commit state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase || true
           git add state.json || true
           git diff --cached --quiet || git commit -m "update state [skip ci]"
           git push

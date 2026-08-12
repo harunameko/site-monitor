@@ -15,6 +15,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -27,15 +28,18 @@ jobs:
           pip install requests beautifulsoup4 playwright
           playwright install --with-deps chromium
 
-      - name: Run monitor
+      - name: Run monitor (50分間ループ)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
-          for i in 1 2 3; do
+          END=$(( $(date +%s) + 3000 ))
+          while [ $(date +%s) -lt $END ]; do
             python monitor.py || true
-            if [ "$i" -lt 3 ]; then sleep 30; fi
+            sleep 30
           done
+
       - name: Commit state
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

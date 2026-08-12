@@ -76,34 +76,27 @@ def check_jba(site: dict, state: dict) -> None:
     m = re.search(r"(\d+)\s*件", text)
     count = int(m.group(1)) if m else -1
 
-    products = sorted({
-        a["href"].split("?")[0]
-        for a in soup.find_all("a", href=True)
-        if "/products/" in a["href"]
-    })
+if count < 0:
+        print(f"[{site['name']}] 件数を読み取れませんでした（スキップ）")
+        return
 
-    fp = json.dumps({"count": count, "products": products}, ensure_ascii=False, sort_keys=True)
-    result = {
-        "hash": hashlib.sha256(fp.encode("utf-8")).hexdigest(),
-        "summary": f"出品 {count} 件",
-        "count": count,
-    }
+    result = {"hash": str(count), "summary": f"出品 {count} 件", "count": count}
 
     prev = state.get(site["id"])
     if prev is None:
         print(f"[{site['name']}] 初回記録 ({result['summary']})")
-    elif prev["hash"] != result["hash"]:
-        old_c = prev.get("count", 0) or 0
-        new_c = result["count"]
-        msg = (f"出品が増えました: {old_c}件 → {new_c}件"
-               if new_c > old_c else f"{prev.get('summary')} → {result['summary']}")
-        print(f"[{site['name']}] 変更検知! {msg}")
-        notify(f"【{site['name']}】更新あり", msg, site["url"])
     else:
-        print(f"[{site['name']}] 変更なし ({result['summary']})")
+        old_c = prev.get("count", 0) or 0
+        if count > old_c:
+            msg = f"出品が増えました: {old_c}件 → {count}件"
+            print(f"[{site['name']}] 変更検知! {msg}")
+            notify(f"【{site['name']}】出品あり", msg, site["url"])
+        elif count < old_c:
+            print(f"[{site['name']}] 減少（通知なし）: {old_c}件 → {count}件")
+        else:
+            print(f"[{site['name']}] 変更なし ({result['summary']})")
 
     state[site["id"]] = result
-
 
 def check_softbank(state: dict) -> None:
     from playwright.sync_api import sync_playwright

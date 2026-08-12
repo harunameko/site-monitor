@@ -125,27 +125,27 @@ def check_softbank(state: dict) -> None:
         return
 
     lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+    def norm(s):
+        return s.replace(" ", "").replace("　", "")
+
     idx = None
-    for i, ln in enumerate(lines):
-        norm = ln.replace(" ", "").replace("　", "")
-        if "13インチ" in norm or "12.9インチ" in norm:
+    for i, ln in enumerate(lines[:-1]):
+        n = norm(ln)
+        if n.startswith("13インチ") or n.startswith("12.9インチ"):
             continue
-        if "11インチiPadAir" in norm and "M3" in norm:
-            idx = i
-            break
+        if "11インチiPadAir" in n and "M3" in n:
+            nxt = norm(lines[i + 1])
+            if "在庫なし" in nxt or "予約" in nxt or "購入する" in nxt:
+                idx = i
+                break
 
     if idx is None:
         print(f"[ソフトバンク] 対象機種({SB_TARGET} {SB_TARGET_SUB})が見つかりません")
         return
 
-    for ln in lines[idx: idx + 15]:
-        if "在庫なし" in ln:
-            status = "在庫なし"
-            break
-        if "予約" in ln or "購入する" in ln:
-            status = "在庫あり"
-            break
-
+    nxt = norm(lines[idx + 1])
+    status = "在庫なし" if "在庫なし" in nxt else "在庫あり"
+    print(f"[ソフトバンク] 判定元テキスト: {lines[idx]} / {lines[idx + 1]}")
     if status is None:
         print("[ソフトバンク] ボタン表示を判別できませんでした")
         return

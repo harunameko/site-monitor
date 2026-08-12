@@ -31,7 +31,10 @@ jobs:
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
-          python debug_sb.py
+          for i in 1 2 3; do
+            python monitor.py || true
+            if [ "$i" -lt 3 ]; then sleep 30; fi
+          done
       - name: Commit state
         run: |
           git config user.name "github-actions[bot]"

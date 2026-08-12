@@ -127,7 +127,10 @@ def check_softbank(state: dict) -> None:
     lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
     idx = None
     for i, ln in enumerate(lines):
-        if SB_TARGET in ln and SB_TARGET_SUB in ln:
+        norm = ln.replace(" ", "").replace("　", "")
+        if "13インチ" in norm or "12.9インチ" in norm:
+            continue
+        if "11インチiPadAir" in norm and "M3" in norm:
             idx = i
             break
 

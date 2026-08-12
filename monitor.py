@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import hashlib
 import json
 import os
 import re
@@ -42,13 +41,13 @@ JBA_SITES = [
 ]
 
 
-def notify(title: str, message: str, url: str) -> None:
+def notify(title, message, url):
     if not NTFY_TOPIC:
         print("NTFY_TOPIC 未設定のため通知をスキップ")
         return
     try:
         requests.post(
-            f"https://ntfy.sh/{NTFY_TOPIC}",
+            "https://ntfy.sh/" + NTFY_TOPIC,
             data=message.encode("utf-8"),
             headers={
                 "Title": title.encode("utf-8"),
@@ -58,17 +57,17 @@ def notify(title: str, message: str, url: str) -> None:
             },
             timeout=15,
         )
-        print(f"通知送信: {title}")
+        print("通知送信: " + title)
     except Exception as e:
-        print(f"通知送信失敗: {e}")
+        print("通知送信失敗: " + str(e))
 
 
-def check_jba(site: dict, state: dict) -> None:
+def check_jba(site, state):
     try:
         r = requests.get(site["url"], headers=HEADERS, timeout=30)
         r.raise_for_status()
     except Exception as e:
-        print(f"[{site['name']}] 取得失敗: {e}")
+        print("[" + site["name"] + "] 取得失敗: " + str(e))
         return
 
     soup = BeautifulSoup(r.text, "html.parser")
@@ -76,32 +75,32 @@ def check_jba(site: dict, state: dict) -> None:
     m = re.search(r"(\d+)\s*件", text)
     count = int(m.group(1)) if m else -1
 
-if count < 0:
-        print(f"[{site['name']}] 件数を読み取れませんでした（スキップ）")
+    if count < 0:
+        print("[" + site["name"] + "] 件数を読み取れませんでした（スキップ）")
         return
 
-    result = {"hash": str(count), "summary": f"出品 {count} 件", "count": count}
-
+    result = {"hash": str(count), "summary": "出品 " + str(count) + " 件", "count": count}
     prev = state.get(site["id"])
+
     if prev is None:
-        print(f"[{site['name']}] 初回記録 ({result['summary']})")
+        print("[" + site["name"] + "] 初回記録 (" + result["summary"] + ")")
     else:
         old_c = prev.get("count", 0) or 0
         if count > old_c:
-            msg = f"出品が増えました: {old_c}件 → {count}件"
-            print(f"[{site['name']}] 変更検知! {msg}")
-            notify(f"【{site['name']}】出品あり", msg, site["url"])
+            msg = "出品が増えました: " + str(old_c) + "件 → " + str(count) + "件"
+            print("[" + site["name"] + "] 変更検知! " + msg)
+            notify("【" + site["name"] + "】出品あり", msg, site["url"])
         elif count < old_c:
-            print(f"[{site['name']}] 減少（通知なし）: {old_c}件 → {count}件")
+            print("[" + site["name"] + "] 減少（通知なし）: " + str(old_c) + "件 → " + str(count) + "件")
         else:
-            print(f"[{site['name']}] 変更なし ({result['summary']})")
+            print("[" + site["name"] + "] 変更なし (" + result["summary"] + ")")
 
     state[site["id"]] = result
 
-def check_softbank(state: dict) -> None:
+
+def check_softbank(state):
     from playwright.sync_api import sync_playwright
 
-    status = None
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(args=["--no-sandbox"])
@@ -114,16 +113,17 @@ def check_softbank(state: dict) -> None:
             body = page.inner_text("body")
             browser.close()
     except Exception as e:
-        print(f"[ソフトバンク] 取得失敗: {e}")
+        print("[ソフトバンク] 取得失敗: " + str(e))
         return
 
     lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+
     def norm(s):
         return s.replace(" ", "").replace("　", "")
 
     idx = None
-    for i, ln in enumerate(lines[:-1]):
-        n = norm(ln)
+    for i in range(len(lines) - 1):
+        n = norm(lines[i])
         if n.startswith("13インチ") or n.startswith("12.9インチ"):
             continue
         if "11インチiPadAir" in n and "M3" in n:
@@ -133,23 +133,20 @@ def check_softbank(state: dict) -> None:
                 break
 
     if idx is None:
-        print(f"[ソフトバンク] 対象機種({SB_TARGET} {SB_TARGET_SUB})が見つかりません")
+        print("[ソフトバンク] 対象機種が見つかりません")
         return
 
     nxt = norm(lines[idx + 1])
     status = "在庫なし" if "在庫なし" in nxt else "在庫あり"
-    print(f"[ソフトバンク] 判定元テキスト: {lines[idx]} / {lines[idx + 1]}")
-    if status is None:
-        print("[ソフトバンク] ボタン表示を判別できませんでした")
-        return
+    print("[ソフトバンク] 判定元テキスト: " + lines[idx] + " / " + lines[idx + 1])
 
     result = {"hash": status, "summary": status, "count": None}
     prev = state.get("softbank_ipad_air_m3")
 
     if prev is None:
-        print(f"[ソフトバンク iPad Air M3] 初回記録 ({status})")
+        print("[ソフトバンク iPad Air M3] 初回記録 (" + status + ")")
     elif prev["hash"] != status:
-        print(f"[ソフトバンク iPad Air M3] 変更検知! {prev['hash']} → {status}")
+        print("[ソフトバンク iPad Air M3] 変更検知! " + prev["hash"] + " → " + status)
         if status == "在庫あり":
             notify("【在庫あり】11インチiPad Air (M3)",
                    "在庫なし → 予約・購入できる状態になりました！", SB_URL)
@@ -157,12 +154,12 @@ def check_softbank(state: dict) -> None:
             notify("【在庫なし】11インチiPad Air (M3)",
                    "在庫あり → 在庫なしに変わりました", SB_URL)
     else:
-        print(f"[ソフトバンク iPad Air M3] 変更なし ({status})")
+        print("[ソフトバンク iPad Air M3] 変更なし (" + status + ")")
 
     state["softbank_ipad_air_m3"] = result
 
 
-def main() -> int:
+def main():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, encoding="utf-8") as f:
             state = json.load(f)

@@ -28,11 +28,7 @@ jobs:
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
-          END=$(( $(date +%s) + 3600 ))
-          while [ $(date +%s) -lt $END ]; do
-            python monitor.py || true
-            sleep 20
-          done
+          python debug_jba.py
 
       - name: Commit state
         if: always()

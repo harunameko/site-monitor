@@ -5,21 +5,13 @@ import re
 import sys
 
 import requests
-from bs4 import BeautifulSoup
 
 STATE_FILE = "state.json"
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-    ),
-    "Accept-Language": "ja,en;q=0.8",
-}
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 
-SB_TARGET = "11インチiPad Air"
-SB_TARGET_SUB = "M3"
 SB_URL = "https://www.softbank.jp/online-shop/products/stock/?device=ipad"
 
 JBA_SITES = [
@@ -62,56 +54,53 @@ def notify(title, message, url):
         print("通知送信失敗: " + str(e))
 
 
-def check_jba(site, state):
+def get_text(page, url):
+    page.goto(url, wait_until="networkidle", timeout=90000)
+    page.wait_for_timeout(4000)
+    return page.inner_text("body")
+
+
+def check_jba(page, site, state):
     try:
-        r = requests.get(site["url"], headers=HEADERS, timeout=30)
-        r.raise_for_status()
+        body = get_text(page, site["url"])
     except Exception as e:
         print("[" + site["name"] + "] 取得失敗: " + str(e))
         return
 
-    soup = BeautifulSoup(r.text, "html.parser")
-    text = soup.get_text(" ", strip=True)
-    m = re.search(r"(\d+)\s*件", text)
-    count = int(m.group(1)) if m else -1
-
-    if count < 0:
+    m = re.search(r"(\d+)\s*件", body)
+    if not m:
         print("[" + site["name"] + "] 件数を読み取れませんでした（スキップ）")
         return
 
-    result = {"hash": str(count), "summary": "出品 " + str(count) + " 件", "count": count}
-    prev = state.get(site["id"])
+    total = int(m.group(1))
+    sold = body.count("リセール成立")
+    available = total - sold
+    if available < 0:
+        available = 0
 
+    print("[" + site["name"] + "] 全" + str(total) + "件 / 成立済" + str(sold)
+          + "件 → 購入可能 " + str(available) + "件")
+
+    prev = state.get(site["id"])
     if prev is None:
-        print("[" + site["name"] + "] 初回記録 (" + result["summary"] + ")")
+        print("[" + site["name"] + "] 初回記録")
     else:
         old_c = prev.get("count", 0) or 0
-        if count > old_c:
-            msg = "出品が増えました: " + str(old_c) + "件 → " + str(count) + "件"
+        if available > old_c:
+            msg = "購入可能なチケットが出ました: " + str(old_c) + "件 → " + str(available) + "件"
             print("[" + site["name"] + "] 変更検知! " + msg)
-            notify("【" + site["name"] + "】出品あり", msg, site["url"])
-        elif count < old_c:
-            print("[" + site["name"] + "] 減少（通知なし）: " + str(old_c) + "件 → " + str(count) + "件")
-        else:
-            print("[" + site["name"] + "] 変更なし (" + result["summary"] + ")")
+            notify("【" + site["name"] + "】チケットあり", msg, site["url"])
+        elif available < old_c:
+            print("[" + site["name"] + "] 減少（通知なし）")
 
-    state[site["id"]] = result
+    state[site["id"]] = {"hash": str(available),
+                         "summary": "購入可能 " + str(available) + " 件",
+                         "count": available}
 
 
-def check_softbank(state):
-    from playwright.sync_api import sync_playwright
-
+def check_softbank(page, state):
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(args=["--no-sandbox"])
-            page = browser.new_page(
-                user_agent=HEADERS["User-Agent"],
-                viewport={"width": 412, "height": 915},
-            )
-            page.goto(SB_URL, wait_until="networkidle", timeout=90000)
-            page.wait_for_timeout(4000)
-            body = page.inner_text("body")
-            browser.close()
+        body = get_text(page, SB_URL)
     except Exception as e:
         print("[ソフトバンク] 取得失敗: " + str(e))
         return
@@ -138,15 +127,13 @@ def check_softbank(state):
 
     nxt = norm(lines[idx + 1])
     status = "在庫なし" if "在庫なし" in nxt else "在庫あり"
-    print("[ソフトバンク] 判定元テキスト: " + lines[idx] + " / " + lines[idx + 1])
+    print("[ソフトバンク] 判定元: " + lines[idx] + " / " + lines[idx + 1])
 
-    result = {"hash": status, "summary": status, "count": None}
     prev = state.get("softbank_ipad_air_m3")
-
     if prev is None:
-        print("[ソフトバンク iPad Air M3] 初回記録 (" + status + ")")
+        print("[ソフトバンク] 初回記録 (" + status + ")")
     elif prev["hash"] != status:
-        print("[ソフトバンク iPad Air M3] 変更検知! " + prev["hash"] + " → " + status)
+        print("[ソフトバンク] 変更検知! " + prev["hash"] + " → " + status)
         if status == "在庫あり":
             notify("【在庫あり】11インチiPad Air (M3)",
                    "在庫なし → 予約・購入できる状態になりました！", SB_URL)
@@ -154,12 +141,14 @@ def check_softbank(state):
             notify("【在庫なし】11インチiPad Air (M3)",
                    "在庫あり → 在庫なしに変わりました", SB_URL)
     else:
-        print("[ソフトバンク iPad Air M3] 変更なし (" + status + ")")
+        print("[ソフトバンク] 変更なし (" + status + ")")
 
-    state["softbank_ipad_air_m3"] = result
+    state["softbank_ipad_air_m3"] = {"hash": status, "summary": status, "count": None}
 
 
 def main():
+    from playwright.sync_api import sync_playwright
+
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, encoding="utf-8") as f:
             state = json.load(f)
@@ -170,10 +159,15 @@ def main():
 
     before = json.dumps(state, ensure_ascii=False, sort_keys=True)
 
-    for site in JBA_SITES:
-        check_jba(site, state)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(user_agent=UA, viewport={"width": 412, "height": 915})
 
-    check_softbank(state)
+        for site in JBA_SITES:
+            check_jba(page, site, state)
+
+        check_softbank(page, state)
+        browser.close()
 
     after = json.dumps(state, ensure_ascii=False, sort_keys=True)
     if before != after:
@@ -183,7 +177,7 @@ def main():
 
     if first_run:
         notify("監視を開始しました",
-               "JBAリセール3件＋ソフトバンクiPad Air(M3)在庫の監視を開始しました。",
+               "JBAリセール3件＋ソフトバンクiPad Air(M3)の監視を開始しました。",
                "https://github.com")
     return 0
 

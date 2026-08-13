@@ -14,6 +14,15 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
 
 SB_URL = "https://www.softbank.jp/online-shop/products/stock/?device=ipad"
 
+OFFICIAL_URL = ("https://jba-ticket.jp/s/jbat/page/ticket_detail"
+                "?ima=3849&game=men_20260815816&code=jba20260815_GS2"
+                "&ct=jba202608150816_02#/")
+
+OFFICIAL_DAYS = [
+    {"id": "official_0815", "name": "公式 8/15", "label": "2026年8月15日"},
+    {"id": "official_0816", "name": "公式 8/16", "label": "2026年8月16日"},
+]
+
 JBA_SITES = [
     {
         "id": "jba1",
@@ -58,6 +67,52 @@ def get_text(page, url):
     page.goto(url, wait_until="networkidle", timeout=90000)
     page.wait_for_timeout(4000)
     return page.inner_text("body")
+
+
+def check_official(browser, day, state):
+    page = browser.new_page(user_agent=UA, viewport={"width": 412, "height": 915})
+    try:
+        page.goto(OFFICIAL_URL, wait_until="networkidle", timeout=90000)
+        page.wait_for_timeout(5000)
+        page.get_by_text(day["label"]).first.click()
+        page.wait_for_timeout(6000)
+
+        items = page.query_selector_all("li.p-ticket_in__list-item")
+        total = len(items)
+        available = []
+        for it in items:
+            disabled = it.get_attribute("data-disabled")
+            title_el = it.query_selector(".p-in-title")
+            name = title_el.inner_text().strip() if title_el else "?"
+            if disabled != "true":
+                available.append(name)
+    except Exception as e:
+        print("[" + day["name"] + "] 取得失敗: " + str(e))
+        page.close()
+        return
+    page.close()
+
+    if total == 0:
+        print("[" + day["name"] + "] 券種を読み取れませんでした（スキップ）")
+        return
+
+    cnt = len(available)
+    print("[" + day["name"] + "] 全" + str(total) + "券種 / 購入可能 " + str(cnt) + "件 "
+          + (str(available) if cnt else ""))
+
+    prev = state.get(day["id"])
+    if prev is None:
+        print("[" + day["name"] + "] 初回記録")
+    else:
+        old_c = prev.get("count", 0) or 0
+        if cnt > old_c:
+            msg = "公式チケットに空きが出ました: " + "、".join(available)
+            print("[" + day["name"] + "] 変更検知! " + msg)
+            notify("【" + day["name"] + "】公式チケット空きあり", msg, OFFICIAL_URL)
+        elif cnt < old_c:
+            print("[" + day["name"] + "] 減少（通知なし）")
+
+    state[day["id"]] = {"hash": str(cnt), "summary": str(cnt) + "券種", "count": cnt}
 
 
 def check_jba(page, site, state):
@@ -161,12 +216,16 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
-        page = browser.new_page(user_agent=UA, viewport={"width": 412, "height": 915})
 
+        for day in OFFICIAL_DAYS:
+            check_official(browser, day, state)
+
+        page = browser.new_page(user_agent=UA, viewport={"width": 412, "height": 915})
         for site in JBA_SITES:
             check_jba(page, site, state)
-
         check_softbank(page, state)
+        page.close()
+
         browser.close()
 
     after = json.dumps(state, ensure_ascii=False, sort_keys=True)
@@ -177,7 +236,7 @@ def main():
 
     if first_run:
         notify("監視を開始しました",
-               "JBAリセール3件＋ソフトバンクiPad Air(M3)の監視を開始しました。",
+               "公式チケット(8/15,8/16)＋リセール3件＋iPad在庫の監視を開始しました。",
                "https://github.com")
     return 0
 

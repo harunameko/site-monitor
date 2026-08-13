@@ -2,20 +2,16 @@ name: site-monitor
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
-concurrency:
-  group: site-monitor
-  cancel-in-progress: false
-
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
 
@@ -25,17 +21,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 playwright
+          pip install requests playwright
           playwright install --with-deps chromium
 
-      - name: Run monitor (50分間ループ)
+      - name: Run monitor (60分間ループ)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
-          END=$(( $(date +%s) + 3000 ))
+          END=$(( $(date +%s) + 3600 ))
           while [ $(date +%s) -lt $END ]; do
             python monitor.py || true
-            sleep 30
+            sleep 20
           done
 
       - name: Commit state
@@ -46,4 +42,4 @@ jobs:
           git pull --rebase || true
           git add state.json || true
           git diff --cached --quiet || git commit -m "update state [skip ci]"
-          git push
+          git push || true

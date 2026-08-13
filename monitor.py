@@ -14,13 +14,18 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
 
 SB_URL = "https://www.softbank.jp/online-shop/products/stock/?device=ipad"
 
-OFFICIAL_URL = ("https://jba-ticket.jp/s/jbat/page/ticket_detail"
-                "?ima=3849&game=men_20260815816&code=jba20260815_GS2"
-                "&ct=jba202608150816_02#/")
+URL_0815 = ("https://jba-ticket.jp/s/jbat/page/ticket_detail"
+            "?ima=3849&game=men_20260815816&code=jba20260815_GS2"
+            "&ct=jba202608150816_02#/")
+
+URL_0831 = ("https://jba-ticket.jp/s/jbat/page/ticket_detail"
+            "?ima=3255&game=men_20260827831&code=jba20260831_GS2"
+            "&ct=jba20260801_02#/")
 
 OFFICIAL_DAYS = [
-    {"id": "official_0815", "name": "公式 8/15", "label": "2026年8月15日"},
-    {"id": "official_0816", "name": "公式 8/16", "label": "2026年8月16日"},
+    {"id": "official_0815", "name": "公式 8/15", "url": URL_0815, "label": "2026年8月15日"},
+    {"id": "official_0816", "name": "公式 8/16", "url": URL_0815, "label": "2026年8月16日"},
+    {"id": "official_0831", "name": "公式 8/31", "url": URL_0831, "label": None},
 ]
 
 JBA_SITES = [
@@ -71,15 +76,18 @@ def get_text(page, url):
 
 def check_official(browser, day, state):
     page = browser.new_page(user_agent=UA, viewport={"width": 412, "height": 915})
+    total = 0
+    available = []
     try:
-        page.goto(OFFICIAL_URL, wait_until="networkidle", timeout=90000)
+        page.goto(day["url"], wait_until="networkidle", timeout=90000)
         page.wait_for_timeout(5000)
-        page.get_by_text(day["label"]).first.click()
-        page.wait_for_timeout(6000)
+
+        if day["label"]:
+            page.get_by_text(day["label"]).first.click()
+            page.wait_for_timeout(6000)
 
         items = page.query_selector_all("li.p-ticket_in__list-item")
         total = len(items)
-        available = []
         for it in items:
             disabled = it.get_attribute("data-disabled")
             title_el = it.query_selector(".p-in-title")
@@ -108,7 +116,7 @@ def check_official(browser, day, state):
         if cnt > old_c:
             msg = "公式チケットに空きが出ました: " + "、".join(available)
             print("[" + day["name"] + "] 変更検知! " + msg)
-            notify("【" + day["name"] + "】公式チケット空きあり", msg, OFFICIAL_URL)
+            notify("【" + day["name"] + "】公式チケット空きあり", msg, day["url"])
         elif cnt < old_c:
             print("[" + day["name"] + "] 減少（通知なし）")
 
@@ -236,7 +244,7 @@ def main():
 
     if first_run:
         notify("監視を開始しました",
-               "公式チケット(8/15,8/16)＋リセール3件＋iPad在庫の監視を開始しました。",
+               "公式チケット3件＋リセール3件＋iPad在庫の監視を開始しました。",
                "https://github.com")
     return 0
 

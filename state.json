@@ -15,9 +15,9 @@
     "count": 0
   },
   "jba1": {
-    "hash": "0",
-    "summary": "購入可能 0 件",
-    "count": 0
+    "hash": "1",
+    "summary": "購入可能 1 件",
+    "count": 1
   },
   "jba2": {
     "hash": "0",
@@ -30,8 +30,8 @@
     "count": 0
   },
   "softbank_ipad_air_m3": {
-    "hash": "在庫あり",
-    "summary": "在庫あり",
+    "hash": "在庫なし",
+    "summary": "在庫なし",
     "count": null
   }
 }

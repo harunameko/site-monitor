@@ -17,22 +17,22 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          END=$(( $(date +%s) + 3600 ))
-          while [ $(date +%s) -lt $END ]; do
-            python monitor.py || true
-            sleep 20
-          done
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
           pip install requests playwright
           playwright install --with-deps chromium
 
-      - name: Run monitor (60分間ループ)
+      - name: Run monitor
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
-          python debug_jba.py
+          END=$(( $(date +%s) + 3600 ))
+          while [ $(date +%s) -lt $END ]; do
+            python monitor.py || true
+            sleep 20
+          done
 
       - name: Commit state
         if: always()

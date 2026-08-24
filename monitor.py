@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
 import os
-import re
 import sys
 
 import requests
@@ -14,36 +13,15 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
 
 SB_URL = "https://www.softbank.jp/online-shop/products/stock/?device=ipad"
 
-URL_0815 = ("https://jba-ticket.jp/s/jbat/page/ticket_detail"
-            "?ima=3849&game=men_20260815816&code=jba20260815_GS2"
-            "&ct=jba202608150816_02#/")
+PIA_URL = ("https://cloak.pia.jp/resale/item/list"
+           "?eventCd=2625378&perfCd=001")
 
 URL_0831 = ("https://jba-ticket.jp/s/jbat/page/ticket_detail"
             "?ima=3255&game=men_20260827831&code=jba20260831_GS2"
             "&ct=jba20260801_02#/")
 
 OFFICIAL_DAYS = [
-    {"id": "official_0815", "name": "公式 8/15", "url": URL_0815, "label": "2026年8月15日"},
-    {"id": "official_0816", "name": "公式 8/16", "url": URL_0815, "label": "2026年8月16日"},
     {"id": "official_0831", "name": "公式 8/31", "url": URL_0831, "label": None},
-]
-
-JBA_SITES = [
-    {
-        "id": "jba1",
-        "name": "JBAリセール(1)",
-        "url": "https://resale.jba-ticket.jp/collections/resale/event_id:252a938a-c9be-4e67-9c70-49aad739fc1d",
-    },
-    {
-        "id": "jba2",
-        "name": "JBAリセール(2)",
-        "url": "https://resale.jba-ticket.jp/collections/resale/event_id:42684d5a-6709-4953-b31a-99b2bd0e3197",
-    },
-    {
-        "id": "jba3",
-        "name": "JBAリセール(3)",
-        "url": "https://resale.jba-ticket.jp/collections/resale/event_id:0647c25d-cb81-4cf1-8914-3a6b3393987c",
-    },
 ]
 
 
@@ -70,8 +48,56 @@ def notify(title, message, url):
 
 def get_text(page, url):
     page.goto(url, wait_until="networkidle", timeout=90000)
-    page.wait_for_timeout(4000)
+    page.wait_for_timeout(5000)
     return page.inner_text("body")
+
+
+def check_pia(page, state):
+    try:
+        body = get_text(page, PIA_URL)
+    except Exception as e:
+        print("[ぴあリセール] 取得失敗: " + str(e))
+        return
+
+    if "リセールチケット一覧" not in body:
+        print("[ぴあリセール] ページを読み取れませんでした（スキップ）")
+        return
+
+    empty = "出品されたリセールチケットはありません" in body
+    status = "出品なし" if empty else "出品あり"
+
+    detail = ""
+    if not empty:
+        lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+        try:
+            s = lines.index("リセールチケット一覧") + 1
+        except ValueError:
+            s = 0
+        picked = []
+        for ln in lines[s:]:
+            if "ページの上部へ" in ln or "操作ガイド" in ln:
+                break
+            picked.append(ln)
+        detail = " / ".join(picked)[:200]
+
+    print("[ぴあリセール] " + status + (" : " + detail if detail else ""))
+
+    prev = state.get("pia_resale")
+    if prev is None:
+        print("[ぴあリセール] 初回記録 (" + status + ")")
+    elif prev["hash"] != status:
+        print("[ぴあリセール] 変更検知! " + prev["hash"] + " → " + status)
+        if status == "出品あり":
+            msg = "リセールチケットが出品されました！"
+            if detail:
+                msg = msg + "\n" + detail
+            notify("【ぴあリセール】出品あり", msg, PIA_URL)
+        else:
+            print("[ぴあリセール] 出品が無くなりました（通知なし）")
+    else:
+        print("[ぴあリセール] 変更なし (" + status + ")")
+
+    state["pia_resale"] = {"hash": status, "summary": status, "count": None}
 
 
 def check_official(browser, day, state):
@@ -121,44 +147,6 @@ def check_official(browser, day, state):
             print("[" + day["name"] + "] 減少（通知なし）")
 
     state[day["id"]] = {"hash": str(cnt), "summary": str(cnt) + "券種", "count": cnt}
-
-
-def check_jba(page, site, state):
-    try:
-        body = get_text(page, site["url"])
-    except Exception as e:
-        print("[" + site["name"] + "] 取得失敗: " + str(e))
-        return
-
-    m = re.search(r"(\d+)\s*件", body)
-    if not m:
-        print("[" + site["name"] + "] 件数を読み取れませんでした（スキップ）")
-        return
-
-    total = int(m.group(1))
-    sold = body.count("リセール成立")
-    available = total - sold
-    if available < 0:
-        available = 0
-
-    print("[" + site["name"] + "] 全" + str(total) + "件 / 成立済" + str(sold)
-          + "件 → 購入可能 " + str(available) + "件")
-
-    prev = state.get(site["id"])
-    if prev is None:
-        print("[" + site["name"] + "] 初回記録")
-    else:
-        old_c = prev.get("count", 0) or 0
-        if available > old_c:
-            msg = "購入可能なチケットが出ました: " + str(old_c) + "件 → " + str(available) + "件"
-            print("[" + site["name"] + "] 変更検知! " + msg)
-            notify("【" + site["name"] + "】チケットあり", msg, site["url"])
-        elif available < old_c:
-            print("[" + site["name"] + "] 減少（通知なし）")
-
-    state[site["id"]] = {"hash": str(available),
-                         "summary": "購入可能 " + str(available) + " 件",
-                         "count": available}
 
 
 def check_softbank(page, state):
@@ -215,10 +203,11 @@ def main():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, encoding="utf-8") as f:
             state = json.load(f)
-        first_run = False
     else:
         state = {}
-        first_run = True
+
+    for old in ["jba1", "jba2", "jba3", "official_0815", "official_0816"]:
+        state.pop(old, None)
 
     before = json.dumps(state, ensure_ascii=False, sort_keys=True)
 
@@ -229,8 +218,7 @@ def main():
             check_official(browser, day, state)
 
         page = browser.new_page(user_agent=UA, viewport={"width": 412, "height": 915})
-        for site in JBA_SITES:
-            check_jba(page, site, state)
+        check_pia(page, state)
         check_softbank(page, state)
         page.close()
 
@@ -241,11 +229,6 @@ def main():
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=2)
         print("state.json を更新しました")
-
-    if first_run:
-        notify("監視を開始しました",
-               "公式チケット3件＋リセール3件＋iPad在庫の監視を開始しました。",
-               "https://github.com")
     return 0
 
 

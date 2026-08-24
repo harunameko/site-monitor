@@ -1,37 +1,17 @@
 {
-  "official_0815": {
-    "hash": "0",
-    "summary": "0券種",
-    "count": 0
-  },
-  "official_0816": {
-    "hash": "0",
-    "summary": "0券種",
-    "count": 0
-  },
   "official_0831": {
     "hash": "0",
     "summary": "0券種",
     "count": 0
   },
-  "jba1": {
-    "hash": "0",
-    "summary": "購入可能 0 件",
-    "count": 0
-  },
-  "jba2": {
-    "hash": "0",
-    "summary": "購入可能 0 件",
-    "count": 0
-  },
-  "jba3": {
-    "hash": "0",
-    "summary": "購入可能 0 件",
-    "count": 0
-  },
   "softbank_ipad_air_m3": {
     "hash": "在庫なし",
     "summary": "在庫なし",
+    "count": null
+  },
+  "pia_resale": {
+    "hash": "出品なし",
+    "summary": "出品なし",
     "count": null
   }
 }
